@@ -1,0 +1,115 @@
+version: 2
+
+models:
+  - name: fct_trips
+    description: >
+      Trip fact. Grain: one valid yellow-taxi trip. Clustered by pickup_date.
+      All gold aggregates are built from this table and reconcile back to it.
+    columns:
+      - name: trip_id
+        data_tests: [unique, not_null]
+      - name: pickup_date
+        data_tests: [not_null]
+      - name: pickup_location_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_zones')
+                field: location_id
+      - name: total_amount
+        description: Revenue = amount charged to the rider (excludes cash tips).
+        data_tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+      - name: surcharges_and_fees_amount
+        description: total - fare - tip - tolls (taxes, surcharges, airport and congestion fees).
+
+  - name: dim_zones
+    description: Taxi zone dimension for the dashboard.
+    columns:
+      - name: location_id
+        data_tests: [unique, not_null]
+      - name: zone_label
+        description: "'<zone> (<borough>)' — display label."
+
+  - name: agg_trip_volume_hourly
+    description: >
+      Trip Volume Over Time. Grain: one row per pickup clock hour (local NYC time).
+      Measures are additive so day/week roll-ups in the dashboard are exact.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [pickup_hour]
+    columns:
+      - name: pickup_hour
+        description: Pickup timestamp truncated to the hour.
+        data_tests: [not_null]
+      - name: trip_count
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+      - name: total_revenue
+        description: Sum of total_amount.
+
+  - name: agg_zone_revenue_daily
+    description: >
+      Revenue by Pickup Zone. Grain: pickup date x pickup zone.
+      Additive measures only; compute averages as sum / trip_count after filtering.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [pickup_date, pickup_location_id]
+    columns:
+      - name: pickup_location_id
+        data_tests: [not_null]
+      - name: trip_count
+        data_tests: [not_null]
+      - name: total_revenue
+        data_tests: [not_null]
+
+  - name: agg_payment_behavior_daily
+    description: >
+      Payment Type Analysis. Grain: pickup date x payment type x trip-distance band.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [pickup_date, payment_type_id, distance_band]
+    columns:
+      - name: payment_type_name
+        data_tests: [not_null]
+      - name: distance_band
+        description: "Trip length bucket, prefixed with a sort key (e.g. '2: 1-3 mi')."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['1: < 1 mi', '2: 1-3 mi', '3: 3-7 mi', '4: 7-15 mi', '5: 15+ mi']
+      - name: tipped_trip_count
+        description: Trips with tip_amount > 0 (meaningful for card payments only).
+
+  - name: agg_data_quality
+    description: >
+      Data Quality report. Grain: source month x rule. Shows how many raw rows each
+      silver rule flagged, how many it alone excluded, and the dollar value affected.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [source_month, rule_name]
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "valid_rows <= total_rows and rows_flagged <= total_rows"
+      # alert if cleaning ever removes more than 10% of a month
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "excluded_rows <= 0.10 * total_rows"
+          config:
+            severity: warn
+    columns:
+      - name: rule_name
+        description: Data-quality rule (dq_* column in slv_trips_flagged, without the prefix).
+      - name: rows_flagged
+        description: Rows the rule fired on (rules overlap).
+      - name: rows_excluded_only_by_rule
+        description: Rows failing this rule and no other — the rule's unique impact.

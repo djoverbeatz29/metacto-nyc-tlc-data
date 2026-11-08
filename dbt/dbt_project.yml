@@ -1,0 +1,59 @@
+name: nyc_tlc
+version: "1.0.0"
+config-version: 2
+profile: nyc_tlc
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Data-quality thresholds used by silver rules. Kept as vars so they are
+  # visible, documented and overridable (`dbt build --vars '{max_trip_hours: 6}'`).
+  max_trip_hours: 12          # longer trips are almost always meter errors
+  max_trip_miles: 200         # NYC yellow cab trips beyond this are implausible
+  max_fare_amount: 1000
+  max_passenger_count: 6
+  max_avg_speed_mph: 80       # faster than any legal NYC road; implies a meter/GPS glitch
+
+models:
+  nyc_tlc:
+    +persist_docs:
+      relation: true
+      columns: true
+    bronze:
+      +schema: bronze
+      +materialized: view
+      +tags: ["bronze"]
+    silver:
+      +schema: silver
+      +materialized: table
+      +tags: ["silver"]
+    gold:
+      +schema: gold
+      +materialized: table
+      +tags: ["gold"]
+
+seeds:
+  nyc_tlc:
+    +schema: reference
+    +tags: ["reference"]
+    +quote_columns: false   # TLC headers are MixedCase; store them case-insensitively
+    payment_types:
+      +column_types:
+        payment_type_id: number
+        payment_type_name: varchar
+    rate_codes:
+      +column_types:
+        rate_code_id: number
+        rate_code_name: varchar
+    vendors:
+      +column_types:
+        vendor_id: number
+        vendor_name: varchar
+
+data_tests:
+  +severity: error

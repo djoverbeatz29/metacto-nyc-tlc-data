@@ -1,0 +1,19 @@
+# Credentials come from environment variables (loaded from the repo-root .env by the
+# Makefile / run scripts). Nothing secret is committed.
+nyc_tlc:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      # Key-pair auth if SNOWFLAKE_PRIVATE_KEY_PATH is set (takes precedence); else password.
+      private_key_path: "{{ env_var('SNOWFLAKE_PRIVATE_KEY_PATH', '') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', '') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'NYC_TLC_TRANSFORMER') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'NYC_TLC_WH') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'NYC_TLC') }}"
+      schema: dev
+      threads: 8
+      client_session_keep_alive: false
+      query_tag: nyc_tlc_dbt

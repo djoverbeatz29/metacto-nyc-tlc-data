@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Landing zone. Loaded by `ingestion/load_to_snowflake.py` via PUT + COPY INTO,
+      byte-for-byte from the TLC Parquet files plus load metadata. Never modified by dbt.
+    database: "{{ env_var('SNOWFLAKE_DATABASE', 'NYC_TLC') }}"
+    schema: raw
+    loaded_at_field: _loaded_at
+    tables:
+      - name: yellow_tripdata
+        description: NYC TLC yellow taxi trip records (one row per trip, as published).
+        freshness:
+          # Monthly batch source: warn if no load in ~5 weeks, error after ~2 months.
+          warn_after: {count: 35, period: day}
+          error_after: {count: 62, period: day}
+        data_tests:
+          - dbt_expectations.expect_table_row_count_to_be_between:
+              arguments:
+                min_value: 1000000
+        columns:
+          - name: tpep_pickup_datetime
+            data_tests: [not_null]
+          - name: tpep_dropoff_datetime
+            data_tests: [not_null]
+          - name: _source_file
+            data_tests: [not_null]

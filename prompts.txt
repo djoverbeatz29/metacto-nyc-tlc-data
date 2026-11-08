@@ -1,0 +1,60 @@
+[2026-11-08T19:03:55Z]
+Prompt: Create a CLAUDE.md file in the project root with a "Project Rules" section containing a "Prompt Logging" rule: append every new instruction/prompt to prompts.txt with an ISO 8601 timestamp and a brief summary of the response; create the file if missing; keep it updated across sessions.
+Response: Created CLAUDE.md in the project root with the requested Prompt Logging rule, and created prompts.txt with this first entry.
+
+[2026-11-08T19:06:12Z]
+Prompt: Asked whether Claude can access the Google Doc assessment brief (docs.google.com/document/d/1HcsH4kn...) and how to approach the task.
+Response: Read the doc via the in-app browser (mobilebasic view). It's a Senior Data Engineer assessment: build a dbt (bronze/silver/gold) + Snowflake + Streamlit analytics platform on 1-3 months of NYC TLC yellow taxi data, with tests, docs, 4 visualizations, a public GitHub repo and a Loom walkthrough. Recommended an approach and asked about Snowflake account availability; no code written yet.
+
+[2026-11-08T19:10:43Z]
+Prompt: User confirmed they have a Snowflake account and downloaded several TLC parquet files to Downloads; asked Claude to choose which to use and delete the unused ones.
+Response: Found 4 TLC files (yellow, green, fhv, fhvhv for 2026-08). Kept yellow_tripdata_2026-08.parquet (the brief allows yellow only, 1-3 months) and moved it to data/raw/. Sent the green, fhv and fhvhv files to the Recycle Bin (other Downloads files untouched). Started creating .venv with dbt-snowflake, streamlit, plotly, pyarrow, pandas, snowflake-connector. Asked about Snowflake auth method and permission to download taxi_zone_lookup.csv.
+
+[2026-11-08T19:23:23Z]
+Prompt: (mid-turn) "You do not need to inform me of your prompts.txt logging activities; I already know you are doing this."
+Response: Saved a feedback memory to log silently. Continued the build: wrote ingestion/load_to_snowflake.py (PUT + COPY INTO with explicit DDL, load metadata, idempotent), dbt project (bronze view; silver slv_trips_flagged with 10 dq_* rules + slv_trips + slv_zones; gold fct_trips, dim_zones and 4 marts; 60 tests incl. reconciliation singular tests; dq_rules macro), Streamlit app (volume/zones/payment/data-quality tabs, gold-only, cached), run.py task runner, README, .env.example, requirements (pinned dbt 1.12 after pip pulled a 1.13 RC). Profiled the parquet (3,336,716 rows; found new request_source column and added it). Converted test args to dbt 1.12 'arguments:' style; dbt parse is clean. Waiting on permission to download taxi_zone_lookup.csv and on the user's .env credentials before loading to Snowflake.
+
+[2026-11-08T19:25:01Z]
+Prompt: "Yes, download it" (approval to download TLC taxi_zone_lookup.csv).
+Response: Downloaded taxi_zone_lookup.csv (265 zones) from TLC's CDN into dbt/seeds. Made the dashboard's default borough filter exclude both placeholder boroughs ("Unknown", "N/A"). dbt parse clean. Next: user fills .env, then python run.py all.
+
+[2026-11-08T19:27:20Z]
+Prompt: Asked whether Claude can access the Snowflake account directly instead of the user typing credentials into a file.
+Response: Explained the options: no direct access to the logged-in browser session; browser SSO needs an IdP that trial accounts lack. Recommended key-pair auth: Claude generates the key pair locally, the user pastes one ALTER USER statement into Snowsight, and only the non-secret account identifier and username are shared. Offered to set it up.
+
+[2026-11-08T19:48:21Z]
+Prompt: "Yes, use key-pair" (switch Snowflake auth to key-pair).
+Response: Generated a 2048-bit RSA key pair in ~/.snowflake (outside the repo and OneDrive; private key ACL restricted to the user). Loader, Streamlit app and dbt profile now use SNOWFLAKE_PRIVATE_KEY_PATH when set, with password as fallback. Added 'python run.py keygen', setup/snowflake_keypair.sql (registers the key and returns account identifier and username), updated .env.example and README, created a local .env with the key path. Waiting for the user to run the SQL in Snowsight and share the account identifier and username.
+
+[2026-11-08T19:50:18Z]
+Prompt: "Use yours" (use Claude-generated key ~/.snowflake/nyc_tlc_rsa_key.p8 rather than the user's encrypted rsa_key.p8 in the repo root).
+Response: Confirmed .env already points at ~/.snowflake/nyc_tlc_rsa_key.p8; left the user's rsa_key.p8 untouched. Waiting for the user to run the ALTER USER SQL in Snowsight and share account identifier and username.
+
+[2026-11-08T19:57:14Z]
+Prompt: Approved deleting the unused encrypted rsa_key.p8; said the ALTER USER public-key SQL was run in Snowsight and asked Claude to connect and confirm.
+Response: Deleted rsa_key.p8 from the repo root. Could not test the connection yet: .env still lacks SNOWFLAKE_ACCOUNT and SNOWFLAKE_USER (the final SELECT in the setup SQL returns them); asked the user for those two values.
+
+[2026-11-08T20:47:23Z]
+Prompt: Provided SNOWFLAKE_ACCOUNT=CUWWVFV-DV49913 and SNOWFLAKE_USER=jroverby92; asked Claude to connect and confirm key-pair auth works.
+Response: Added both values to .env. Connection attempts (key file, and in-memory key with SNOWFLAKE_JWT) both failed with 390144 "JWT token is invalid", meaning the public key on the user does not match ~/.snowflake/nyc_tlc_rsa_key.p8 (expected fingerprint SHA256:WmlCD64W7TEO8Y7uYbhSm7CYG6GqCjXk4zlMd49nUFw=). Asked the user to compare RSA_PUBLIC_KEY_FP via DESC USER, and gave the SQL to re-register the key if it differs.
+
+[2026-11-08T21:02:34Z]
+Prompt: User confirmed RSA_PUBLIC_KEY_FP matches (SHA256:WmlCD64W...). Mid-turn: asked Claude to be mindful of punctuation and quotes, e.g. jroverby92 had to be in double quotes.
+Response: Ruled out clock skew (local time matches Snowflake server) and connector version (3.18 and 5.2 both fail). Root cause: the user is a case-sensitive lowercase name ("jroverby92") and Snowflake clients uppercase the user name in the key-pair JWT. Rewrote setup/snowflake_keypair.sql to create role NYC_TLC_TRANSFORMER and an uppercase TYPE=SERVICE user NYC_TLC_SVC with the existing public key, granting the role to the user's own login too. Pointed .env, .env.example, dbt profile, loader and app defaults at NYC_TLC_SVC / NYC_TLC_TRANSFORMER; updated README. Saved a memory about quoting identifiers. Waiting for the user to run the new SQL.
+
+[2026-11-08T21:04:59Z]
+Prompt: Asked Claude to run the Snowflake setup commands itself, and whether they need to set up a connector.
+Response: Explained that Claude can't run this one-time step: it creates a user, a role and a login key (account security setup that must be done by the account owner), and Claude has no admin login (key-pair can't work for "jroverby92" and Claude can't enter passwords). No connector setup is needed; once the user pastes the SQL in Snowsight, Claude runs everything else itself via NYC_TLC_SVC.
+
+[2026-11-08T21:07:20Z]
+Prompt: User ran the setup SQL and got: "Warehouse 'COMPUTE_WH' does not exist or not authorized."
+Response: The trial account has no COMPUTE_WH. Added a dedicated XSMALL warehouse NYC_TLC_WH (auto_suspend 60, auto_resume, initially suspended) to setup/snowflake_keypair.sql and pointed .env, .env.example, dbt profile, loader and app defaults at it. Gave the user the corrected, re-runnable script (every statement idempotent).
+
+[2026-11-08T21:20:56Z]
+Prompt: "Done, connect now" (user re-ran the setup SQL with warehouse NYC_TLC_WH, role NYC_TLC_TRANSFORMER, service user NYC_TLC_SVC).
+Response: Key-pair login confirmed (NYC_TLC_SVC / NYC_TLC_TRANSFORMER / NYC_TLC_WH). Loaded 3,336,716 rows into RAW (matches the parquet). Ran run.py build: freshness + reference/bronze/silver/gold builds + reconciliation tests all passed. Profiling gold found 852 trips implying >80 mph (max 65,879 mph), so added a dq_implausible_speed rule (var max_avg_speed_mph=80) with a silver range test; rebuilt, all tests pass. Final: 3,144,899 valid trips (5.75% excluded), 4.9M revenue. Quieted connector INFO logs in the loader. Added .claude/launch.json and launched the Streamlit dashboard; all four tabs render real data with no errors (checked via page text; pane hidden so no screenshots).
+
+[2026-11-08T21:21:35Z]
+Prompt: "Commit the working tree changes with a sensible message."
+Response: Staged all changes, checked that no secrets, keys, raw data or build artifacts were included, and committed the analytics platform on main.
+

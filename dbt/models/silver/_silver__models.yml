@@ -1,0 +1,143 @@
+version: 2
+
+models:
+  - name: slv_zones
+    description: Cleaned TLC Taxi Zone dimension (265 zones) from the official lookup file.
+    columns:
+      - name: location_id
+        description: TLC LocationID (1-265).
+        data_tests: [unique, not_null]
+      - name: borough
+        description: Borough (Manhattan, Brooklyn, Queens, Bronx, Staten Island, EWR, Unknown).
+      - name: zone_name
+        description: Taxi zone name.
+      - name: service_zone
+        description: TLC service zone (Yellow Zone, Boro Zone, Airports, EWR).
+      - name: is_airport
+        description: True for JFK, LaGuardia and Newark airport zones.
+      - name: is_known_zone
+        description: False for TLC placeholder IDs 264 (Unknown) and 265 (Outside of NYC).
+
+  - name: slv_trips_flagged
+    description: >
+      Audit table: every bronze row with one boolean column per data-quality rule
+      (`dq_*`) and an overall `is_valid`. Rows are flagged, never dropped here.
+      Thresholds come from project vars (see dbt_project.yml).
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('brz_yellow_trips')
+    columns:
+      - name: trip_id
+        data_tests: [unique, not_null]
+      - name: trip_duration_minutes
+        description: Dropoff minus pickup, in minutes (can be negative before filtering).
+      - name: dq_duplicate
+        description: Identical meter record (vendor, timestamps, zones, fare, total) already seen earlier in the file.
+      - name: dq_missing_timestamp
+        description: Pickup or dropoff timestamp is null.
+      - name: dq_outside_source_month
+        description: Pickup is not in the month the file is published for (stray records, e.g. 2008 or next month).
+      - name: dq_non_positive_duration
+        description: Dropoff is at or before pickup.
+      - name: dq_excessive_duration
+        description: "Trip longer than var('max_trip_hours') — almost always a meter left running."
+      - name: dq_zero_distance
+        description: Distance is zero, negative or null.
+      - name: dq_excessive_distance
+        description: "Distance above var('max_trip_miles')."
+      - name: dq_negative_amount
+        description: Negative fare or total — voids, chargebacks and adjustments rather than trips.
+      - name: dq_excessive_fare
+        description: "Fare above var('max_fare_amount')."
+      - name: dq_implausible_speed
+        description: "Average speed above var('max_avg_speed_mph') — distance and duration are each plausible but impossible together."
+      - name: dq_unknown_zone
+        description: Pickup or dropoff LocationID does not exist in the taxi zone lookup.
+      - name: is_valid
+        description: True when no dq_* rule fires. Only these rows flow to slv_trips.
+        data_tests: [not_null]
+
+  - name: slv_trips
+    description: >
+      Cleaned, conformed, enriched trips. Grain: one valid yellow-taxi trip.
+      Codes decoded, zones attached, derived time parts and metrics added.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "dropoff_at > pickup_at"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "total_amount >= 0 and fare_amount >= 0"
+    columns:
+      - name: trip_id
+        description: Surrogate key carried from bronze.
+        data_tests: [unique, not_null]
+      - name: pickup_at
+        data_tests: [not_null]
+      - name: pickup_date
+        data_tests: [not_null]
+      - name: pickup_hour
+        description: Pickup timestamp truncated to the hour (grain of the volume time series).
+      - name: pickup_week
+        description: Monday of the pickup week.
+      - name: pickup_hour_of_day
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 23
+      - name: pickup_day_of_week
+        description: ISO day of week, 1 = Monday ... 7 = Sunday.
+      - name: payment_type_id
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3, 4, 5, 6]
+                quote: false
+              config:
+                severity: warn
+      - name: payment_type_name
+        data_tests: [not_null]
+      - name: pickup_location_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_zones')
+                field: location_id
+      - name: dropoff_location_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('slv_zones')
+                field: location_id
+      - name: passenger_count
+        description: Driver-entered count; 0 or above var('max_passenger_count') set to null.
+      - name: is_airport_trip
+        description: Pickup or dropoff at JFK, LaGuardia or Newark.
+      - name: trip_distance_miles
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: "{{ var('max_trip_miles') }}"
+                strictly: false
+      - name: trip_duration_minutes
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: "{{ var('max_trip_hours') * 60 }}"
+      - name: avg_speed_mph
+        description: Distance / duration in mph. Trips above var('max_avg_speed_mph') are excluded upstream.
+        data_tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: "{{ var('max_avg_speed_mph') }}"
+      - name: total_amount
+        description: Amount charged to the rider (excludes cash tips). This is "revenue" downstream.
+      - name: tip_pct_of_fare
+        description: Tip / fare for credit-card trips only (cash tips are not recorded by TLC); null otherwise.

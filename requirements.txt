@@ -1,0 +1,8 @@
+dbt-core>=1.12,<1.13
+dbt-snowflake>=1.12,<1.13
+snowflake-connector-python[pandas]>=3.12
+streamlit>=1.40
+plotly>=5.24
+pandas>=2.2
+pyarrow>=17
+python-dotenv>=1.0

@@ -1,0 +1,66 @@
+version: 2
+
+models:
+  - name: brz_yellow_trips
+    description: >
+      Bronze: 1:1 typed and renamed view over `raw.yellow_tripdata`. No filtering and no
+      value changes, so row counts and sums always reconcile to the landing table.
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: source('raw', 'yellow_tripdata')
+    columns:
+      - name: trip_id
+        description: Surrogate key = hash(source_file, source_row_number). Stable across reloads.
+        data_tests: [unique, not_null]
+      - name: source_file
+        description: Staged file the row was loaded from (lineage).
+      - name: source_row_number
+        description: Row number of the record within its source file.
+      - name: source_month
+        description: Month the TLC file is published for (parsed from the file name, e.g. 2026-08-01).
+        data_tests: [not_null]
+      - name: loaded_at
+        description: When the row was copied into Snowflake.
+      - name: vendor_id
+        description: "TPEP provider code (1 = Creative Mobile Technologies, 2 = Curb Mobility, 6 = Myle, 7 = Helix)."
+      - name: rate_code_id
+        description: Final rate code in effect at the end of the trip (see `rate_codes` seed).
+      - name: payment_type_id
+        description: How the passenger paid (see `payment_types` seed).
+      - name: pickup_location_id
+        description: TLC Taxi Zone where the meter was engaged.
+      - name: dropoff_location_id
+        description: TLC Taxi Zone where the meter was disengaged.
+      - name: store_and_fwd_flag
+        description: Y = trip record held in vehicle memory before sending (no server connection).
+      - name: request_source
+        description: How the trip was requested (new TLC column, not yet in the published data dictionary; passed through as-is).
+      - name: pickup_at
+        description: Meter engaged, local NYC time.
+      - name: dropoff_at
+        description: Meter disengaged, local NYC time.
+      - name: passenger_count
+        description: Driver-entered passenger count.
+      - name: trip_distance_miles
+        description: Trip distance reported by the taximeter, in miles.
+      - name: fare_amount
+        description: Time-and-distance fare calculated by the meter (USD).
+      - name: extra_amount
+        description: Miscellaneous extras and surcharges (rush hour, overnight).
+      - name: mta_tax_amount
+        description: MTA tax triggered by the metered rate.
+      - name: tip_amount
+        description: Tip amount. Populated automatically for credit card tips; cash tips are NOT recorded.
+      - name: tolls_amount
+        description: Total tolls paid on the trip.
+      - name: improvement_surcharge_amount
+        description: Improvement surcharge assessed at flag drop.
+      - name: congestion_surcharge_amount
+        description: NYS congestion surcharge.
+      - name: airport_fee_amount
+        description: Fee for pickups at LaGuardia and JFK.
+      - name: cbd_congestion_fee_amount
+        description: MTA Congestion Relief Zone fee (introduced January 2025).
+      - name: total_amount
+        description: Total amount charged to passengers. Does not include cash tips.

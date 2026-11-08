@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets
+.env
+*.p8
+
+# Raw data (large; re-download from TLC — see README)
+data/raw/*.parquet
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+logs/
+.user.yml
+
+# Streamlit
+.streamlit/secrets.toml
