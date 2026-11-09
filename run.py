@@ -5,7 +5,7 @@
     python run.py load      # ingest new data/raw/*.parquet into Snowflake RAW (--force [--month M])
     python run.py update 2026-09        # fetch -> load -> build: add a new month end to end
     python run.py deps      # install dbt packages
-    python run.py build     # dbt seed + run + test, layer by layer (bronze -> silver -> gold)
+    python run.py build     # source freshness + dbt build (seeds, models, tests in DAG order)
     python run.py docs      # generate and serve dbt docs (lineage graph) on :8080
     python run.py app       # launch the Streamlit dashboard locally
     python run.py deploy    # deploy the same dashboard as a Streamlit in Snowflake app
@@ -73,12 +73,12 @@ def deps() -> None:
 
 def build() -> None:
     dbt("source", "freshness")
-    # Layer-by-layer so a failing bronze test stops bad data before silver/gold are rebuilt.
-    # "cautious" = only run tests whose parents are ALL in this layer; cross-layer
-    # reconciliation tests run last, once every layer exists.
-    for selector in ("tag:reference", "source:raw tag:bronze", "tag:silver", "tag:gold"):
-        dbt("build", "--select", *selector.split(), "--indirect-selection", "cautious")
-    dbt("test", "--select", "test_type:singular")
+    # One `dbt build` walks the DAG in order (seeds -> bronze -> silver -> gold), testing
+    # each model right after it is built. If a test fails, everything downstream of it is
+    # skipped, so bad bronze data never reaches silver or gold. Cross-layer reconciliation
+    # tests run once all their parents exist. (A single invocation also avoids paying
+    # dbt's ~10s startup per layer.)
+    dbt("build")
 
 
 def docs() -> None:

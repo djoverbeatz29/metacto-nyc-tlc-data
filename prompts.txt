@@ -98,3 +98,19 @@ Response: Ran run.py update 2026-09: downloaded yellow_tripdata_2026-09.parquet 
 Prompt: "Yes, commit and push" (new-month ingestion: fetch command and incremental loader).
 Response: Checked staged changes for secrets and data files, committed the fetch/update commands and RAW-aware loader on main, and pushed to origin.
 
+[2026-11-09T05:24:08Z]
+Prompt: "What were the overall metrics on that run? As in, how long did each layer take to process?"
+Response: Parsed dbt/logs/dbt.log and the update run output for the September run. About 3m50s end to end: download 3.6s, upload 42.9s, COPY 27.0s; dbt freshness 2.8s, reference 7.7s, bronze 8.3s, silver 27.2s (slv_trips_flagged 7.8s and slv_trips 8.3s over 7.2M/6.8M rows), gold 14.9s, reconciliation 3.2s. Of 2m20s of dbt wall time only ~64s was execution; the rest is startup overhead from six separate dbt invocations. Noted that a single dbt build already skips nodes downstream of a failed test, and offered to switch.
+
+[2026-11-09T05:26:49Z]
+Prompt: "Yes, switch it" (replace the per-layer dbt invocations with a single dbt build).
+Response: run.py build now runs dbt source freshness + one dbt build (dbt skips everything downstream of a failed test, so the bronze-gates-silver protection is kept). Ran it: 75 nodes passed, no warnings/errors; dbt time went from ~141s to 69s wall clock and execution from ~64s to 39.4s (cross-layer parallelism). Updated README (quickstart comment, testing section, new performance note) and the run.py docstring. Not committed.
+
+[2026-11-09T05:27:06Z]
+Prompt: "What is the command I need to execute, to run the app locally?"
+Response: Gave the commands (from the repo root, with the venv at C:\Users\jrove\.venvs\metacto-nyc-tlc-data): run.py app via that interpreter, or activate the venv first; app opens at http://localhost:8501. Stopped the preview server so port 8501 is free.
+
+[2026-11-09T05:28:34Z]
+Prompt: "Yes, commit and push" (single dbt build change).
+Response: Checked staged changes, committed the single-invocation dbt build and README performance notes on main, and pushed to origin.
+
