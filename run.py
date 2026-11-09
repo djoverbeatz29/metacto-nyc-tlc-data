@@ -5,7 +5,8 @@
     python run.py deps      # install dbt packages
     python run.py build     # dbt seed + run + test, layer by layer (bronze -> silver -> gold)
     python run.py docs      # generate and serve dbt docs (lineage graph) on :8080
-    python run.py app       # launch the Streamlit dashboard
+    python run.py app       # launch the Streamlit dashboard locally
+    python run.py deploy    # deploy the same dashboard as a Streamlit in Snowflake app
     python run.py all       # load -> deps -> build
 """
 
@@ -81,8 +82,12 @@ def app() -> None:
     sh(sys.executable, "-m", "streamlit", "run", "app/streamlit_app.py")
 
 
+def deploy() -> None:
+    sh(sys.executable, "deploy/deploy_streamlit.py")
+
+
 TASKS = {"keygen": [keygen], "load": [load], "deps": [deps], "build": [build], "docs": [docs], "app": [app],
-         "all": [load, deps, build]}
+         "deploy": [deploy], "all": [load, deps, build]}
 
 if __name__ == "__main__":
     load_dotenv(ROOT / ".env")

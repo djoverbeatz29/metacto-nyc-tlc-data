@@ -3,6 +3,11 @@
 Gold marts are small pre-aggregated tables (hundreds to low thousands of rows), so each
 one is pulled once, cached for an hour, and sliced in pandas. Filtering therefore costs
 no warehouse compute, and every number on screen comes from a tested gold model.
+
+Runs unchanged in two places:
+  * Streamlit in Snowflake: uses the app's built-in Snowpark session (no credentials;
+    queries run as the app owner role on the app's query warehouse).
+  * Locally: connects with the key pair / password from the repo-root .env.
 """
 
 from __future__ import annotations
@@ -11,17 +16,34 @@ import os
 from pathlib import Path
 
 import pandas as pd
-import snowflake.connector
 import streamlit as st
-from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+def _snowpark_session():
+    """The active session when hosted in Snowflake, else None."""
+    try:
+        from snowflake.snowpark.context import get_active_session
+
+        return get_active_session()
+    except Exception:  # noqa: BLE001 — not installed, or no active session (local run)
+        return None
+
+
+SESSION = _snowpark_session()
+IN_SNOWFLAKE = SESSION is not None
+
+if not IN_SNOWFLAKE:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 GOLD = f"{os.getenv('SNOWFLAKE_DATABASE', 'NYC_TLC')}.gold"
 
 
 @st.cache_resource(show_spinner=False)
-def _connection() -> snowflake.connector.SnowflakeConnection:
+def _connection():
+    import snowflake.connector
+
     key_path = os.getenv("SNOWFLAKE_PRIVATE_KEY_PATH")
     auth = ({"private_key_file": os.path.expanduser(key_path)} if key_path
             else {"password": os.environ["SNOWFLAKE_PASSWORD"]})
@@ -38,9 +60,12 @@ def _connection() -> snowflake.connector.SnowflakeConnection:
 
 @st.cache_data(ttl=3600, show_spinner="Loading from Snowflake gold layer…")
 def _query(sql: str) -> pd.DataFrame:
-    with _connection().cursor() as cur:
-        cur.execute(sql)
-        df = cur.fetch_pandas_all()
+    if IN_SNOWFLAKE:
+        df = SESSION.sql(sql).to_pandas()
+    else:
+        with _connection().cursor() as cur:
+            cur.execute(sql)
+            df = cur.fetch_pandas_all()
     df.columns = [c.lower() for c in df.columns]
     # Snowflake NUMBER -> object/Decimal in some cases; make measures numeric.
     for c in df.columns:

@@ -1,8 +1,9 @@
 dbt-core>=1.12,<1.13
 dbt-snowflake>=1.12,<1.13
 snowflake-connector-python[pandas]>=3.12
-streamlit>=1.40
-plotly>=5.24
-pandas>=2.2
+# Dashboard pins match app/environment.yml (Streamlit in Snowflake runtime) for parity.
+streamlit==1.52.2
+plotly==7.1.0
+pandas==2.2.3
 pyarrow>=17
 python-dotenv>=1.0

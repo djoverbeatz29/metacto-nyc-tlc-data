@@ -1,0 +1,10 @@
+# Packages for the Streamlit in Snowflake runtime (Snowflake Anaconda channel).
+# Versions match requirements.txt so the local app is a faithful test of the hosted one.
+name: nyc_tlc_dashboard
+channels:
+  - snowflake
+dependencies:
+  - streamlit=1.52.2
+  - plotly=7.1.0
+  - pandas=2.2.3
+  - snowflake-snowpark-python
