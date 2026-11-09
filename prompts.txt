@@ -82,3 +82,19 @@ Response: Wrote an interview-oriented walkthrough in chat: end-to-end flow, each
 Prompt: "Yes, commit and push" (the Streamlit in Snowflake deployment, version pins and venv move).
 Response: Checked staged changes for secrets, committed the Streamlit in Snowflake work on main and pushed to origin.
 
+[2026-11-09T04:51:35Z]
+Prompt: "How would I go about ingesting new data? This is static, based on files that I downloaded manually. What if I wanted to incorporate a new file, e.g. 9/1-9/7?"
+Response: Explained that TLC publishes monthly files only (no weekly drops), how the current pipeline already handles a new monthly file (drop in data/raw, run.py all; COPY skips loaded files; dbt rebuilds; dashboard picks up new dates), the gaps (idempotency relies on 64-day COPY load history, full rebuilds, manual download), and the path to automation (fetch script, scheduler, S3 + Snowpipe, incremental models). Offered to add a fetch command and make the loader skip files already in RAW.
+
+[2026-11-09T04:54:58Z]
+Prompt: "Yes, add both" (add a fetch command and make the loader skip files already in RAW).
+Response: Loader now reads distinct _source_file from RAW and loads only new files (no reliance on the 64-day COPY history); added --month; --force reloads delete + COPY in one transaction and use FILES=(...) so only the named files load (fixing a latent bug where --force re-copied every staged file). Added ingestion/fetch_tlc.py (download from TLC CDN, Parquet validation via temp file, --check HEAD-only, non-zero exit when unpublished) and run.py fetch / update (fetch -> load -> build). Tested: re-run skips August; invalid month and missing file rejected; --check shows 2026-09 published, 2026-10 not; forced August reload kept exactly 3,336,716 rows; unpublished fetch saves nothing and exits 1. Updated README. Did not download September (needs approval). Not committed.
+
+[2026-11-09T05:22:10Z]
+Prompt: "Yes, add September" (download and ingest September 2026).
+Response: Ran run.py update 2026-09: downloaded yellow_tripdata_2026-09.parquet (67.4 MB) from the TLC CDN, loaded 3,876,044 rows (August skipped as already in RAW), and dbt freshness/build/tests all passed. September: 3,642,592 valid trips (6.02% excluded), $117.4M revenue, avg fare $23.04; August unchanged. Gold now has 1,464 hourly rows (61 days). Local dashboard shows Aug 1 - Sep 30: 6,787,491 trips, $212.3M, 7 charts, no errors; Data Quality totals reconcile across both months. Hosted app needs no redeploy (reads gold; cache refreshes within an hour).
+
+[2026-11-09T05:23:02Z]
+Prompt: "Yes, commit and push" (new-month ingestion: fetch command and incremental loader).
+Response: Checked staged changes for secrets and data files, committed the fetch/update commands and RAW-aware loader on main, and pushed to origin.
+

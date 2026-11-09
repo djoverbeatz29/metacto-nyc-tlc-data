@@ -1,7 +1,9 @@
 """Cross-platform task runner. Loads .env, then runs the pipeline step(s).
 
     python run.py keygen    # one-time: create a Snowflake key pair + print the SQL to register it
-    python run.py load      # ingest data/raw/*.parquet into Snowflake RAW
+    python run.py fetch 2026-09 [...]   # download TLC monthly file(s) into data/raw/
+    python run.py load      # ingest new data/raw/*.parquet into Snowflake RAW (--force [--month M])
+    python run.py update 2026-09        # fetch -> load -> build: add a new month end to end
     python run.py deps      # install dbt packages
     python run.py build     # dbt seed + run + test, layer by layer (bronze -> silver -> gold)
     python run.py docs      # generate and serve dbt docs (lineage graph) on :8080
@@ -55,8 +57,14 @@ def keygen() -> None:
     print((ROOT / "setup" / "snowflake_keypair.sql").read_text().replace("<PASTE_PUBLIC_KEY_BODY_HERE>", body))
 
 
+def fetch() -> None:
+    sh(sys.executable, "ingestion/fetch_tlc.py", *sys.argv[2:])
+
+
 def load() -> None:
-    sh(sys.executable, "ingestion/load_to_snowflake.py", *sys.argv[2:])
+    # `load` forwards its own flags; `update`/`all` pass months, which load doesn't take.
+    extra = sys.argv[2:] if sys.argv[1] == "load" else []
+    sh(sys.executable, "ingestion/load_to_snowflake.py", *extra)
 
 
 def deps() -> None:
@@ -86,7 +94,7 @@ def deploy() -> None:
     sh(sys.executable, "deploy/deploy_streamlit.py")
 
 
-TASKS = {"keygen": [keygen], "load": [load], "deps": [deps], "build": [build], "docs": [docs], "app": [app],
+TASKS = {"keygen": [keygen], "fetch": [fetch], "update": [fetch, load, build], "load": [load], "deps": [deps], "build": [build], "docs": [docs], "app": [app],
          "deploy": [deploy], "all": [load, deps, build]}
 
 if __name__ == "__main__":
